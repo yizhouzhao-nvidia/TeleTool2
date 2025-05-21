@@ -1,5 +1,5 @@
 name: tele_tool_2
-description: "A new Flutter project."
+description: "This app creates a flutter version for TeleTool and updated with volume key events. This IOS app leverages ARKits to obtain the camera's 6DoF poses and transmit this data via a socket client. It is designed for applications for robot end-effector tracking and data collection. In addition, it tracks the volume key board, allowing the users to customize the control."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -37,7 +37,8 @@ dependencies:
   arkit_plugin: ^1.1.2
   vector_math: ^2.1.4
   socket_io_client: ^3.1.2
-  volume_watcher: ^2.0.1
+  volume_key_board: ^0.0.1
+  flutter_launcher_icons: ^0.14.3
 
 dev_dependencies:
   flutter_test:

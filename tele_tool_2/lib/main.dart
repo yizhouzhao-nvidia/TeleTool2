@@ -1,11 +1,13 @@
-import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:math';
+
 import 'package:arkit_plugin/arkit_plugin.dart';
-import 'package:vector_math/vector_math_64.dart' as vector_math;
+import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:vector_math/vector_math_64.dart' as vector_math;
+import 'package:volume_key_board/volume_key_board.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +26,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
   final bool printTransform = false; // Add this variable to control debugPrint
   final TextEditingController _ipAddressController = TextEditingController();
   final TextEditingController _portController = TextEditingController();
-  late IO.Socket _socket; // Use IO.Socket type for socket
+  IO.Socket? _socket; // Use IO.Socket type for socket
   String _message = 'Not Connected.';
   String _position = '0,0,0';
   String _rotationXYZ = '0,0,0';
@@ -33,12 +35,18 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
   late final ARKitController arkitController;
   late final Ticker _ticker;
 
+  final ValueNotifier<String> _valueNotifier = ValueNotifier(
+    'press Volume key',
+  );
+  int _volumeNum = 0;
+
   Duration _previousTimestamp = Duration.zero;
   final Duration _frameInterval = const Duration(milliseconds: 33); // ~30 fps
 
   @override
   void initState() {
     super.initState();
+
     _ipAddressController.text = '10.0.0.26'; // Or any default IP
     _portController.text = '5555'; // Or any default port
 
@@ -51,6 +59,17 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
     });
 
     _ticker.start();
+
+    // Volume key listener
+    VolumeKeyBoard.instance.addListener((event) {
+      if (event == VolumeKey.up) {
+        _volumeNum = min(100, _volumeNum + 10);
+        _valueNotifier.value = "${_volumeNum++}";
+      } else if (event == VolumeKey.down) {
+        _volumeNum = max(-100, _volumeNum - 10);
+        _valueNotifier.value = "${_volumeNum--}";
+      } 
+    });
   }
 
   @override
@@ -65,39 +84,42 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
   Future<void> _connect() async {
     debugPrint("debugging connect");
     try {
-      setState(() {
-        _message = 'Connecting...';
-      });
+      
       final ipAddress = _ipAddressController.text;
       final port = int.parse(_portController.text);
 
+      setState(() {
+        _message = 'Connecting to: $ipAddress:$port ...';
+      });
+
       // Check if the socket is already connected
-      // if (_socket != null) {
-      //   _socket.dispose();
-      // }
-      // Create a new socket connection
+      if (_socket != null) {
+        debugPrint("debugging socket not null");
+        _socket!.clearListeners();
+      }
+      //Create a new socket connection
       _socket = IO.io(
         'http://$ipAddress:$port',
         IO.OptionBuilder()
             .setTransports(['websocket']) // Use WebSocket instead of polling
             .setReconnectionAttempts(5) // Optional: set reconnection attempts
-            .setReconnectionDelay(
-              1000,
-            ) // Optional: set delay between reconnections
+            // .setReconnectionDelay(
+            //   1000,
+            // ) // Optional: set delay between reconnections
             .setTimeout(5000) // Optional: set timeout for connection
             .disableAutoConnect() // Optional: manually control connect
             .build(),
       );
 
-      _socket.onConnect((_) {
-        print('Connected to server');
+      _socket!.onConnect((_) {
+        debugPrint('Connected to server');
         setState(() {
           _isConnected = true;
           _message = 'Connected to: $ipAddress:$port';
         });
       });
 
-      _socket.onConnectError((error) {
+      _socket!.onConnectError((error) {
         print('Connection error: $error');
         setState(() {
           _isConnected = false;
@@ -105,7 +127,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
         });
       });
 
-      _socket.connect(); // Manually trigger connection
+      _socket!.connect(); // Manually trigger connection
     } catch (e) {
       setState(() {
         _isConnected = false;
@@ -117,7 +139,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
 
   void _disconnect() {
     try {
-      _socket.destroy();
+      _socket?.disconnect();
     } catch (e) {
       if (printTransform) print('Error disconnecting: $e');
     } finally {
@@ -134,44 +156,44 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
     if (printTransform) debugPrint('Tick at ${DateTime.now()}');
     if (arkitController != null) {
       // Perform ARKit updates here
-      final camera_pos = await arkitController.cameraPosition();
-      if (camera_pos == null) {
+      final cameraPos = await arkitController.cameraPosition();
+      if (cameraPos == null) {
         if (printTransform) debugPrint('Camera position is null');
         return;
-      } 
-      if (printTransform) debugPrint('Camera position: $camera_pos');
-
-      final camera_rot = await arkitController.getCameraEulerAngles();
-      if (camera_rot == null) {
-        if (printTransform) debugPrint('Camera rotation is null');
-        return;
       }
-      if (printTransform) debugPrint('Camera rotation: $camera_rot');
+      if (printTransform) debugPrint('Camera position: $cameraPos');
 
-      
+      final cameraRot = await arkitController.getCameraEulerAngles();
+      if (printTransform) debugPrint('Camera rotation: $cameraRot');
+
       // update the position and rotation strings with 3 decimal places
       setState(() {
-      _position = '${camera_pos.x.toStringAsFixed(3)},'
-          '${camera_pos.y.toStringAsFixed(3)},'
-          '${camera_pos.z.toStringAsFixed(3)}';
-      _rotationXYZ = '${camera_rot.x.toStringAsFixed(3)},'
-          '${camera_rot.y.toStringAsFixed(3)},'
-          '${camera_rot.z.toStringAsFixed(3)}';
-    });
+        _position =
+            '${cameraPos.x.toStringAsFixed(3)},'
+            '${cameraPos.y.toStringAsFixed(3)},'
+            '${cameraPos.z.toStringAsFixed(3)}';
+        _rotationXYZ =
+            '${cameraRot.x.toStringAsFixed(3)},'
+            '${cameraRot.y.toStringAsFixed(3)},'
+            '${cameraRot.z.toStringAsFixed(3)}';
+      });
       // Convert rotation (Euler angles) to a rotation matrix
       final rotationMatrix =
           vector_math.Matrix4.identity()
-            ..rotateX(camera_rot.x)
-            ..rotateY(camera_rot.y)
-            ..rotateZ(camera_rot.z);
+            ..rotateX(cameraRot.x)
+            ..rotateY(cameraRot.y)
+            ..rotateZ(cameraRot.z);
 
       // Create a translation matrix from the camera position
       final translationMatrix = vector_math.Matrix4.translation(
-        vector_math.Vector3(camera_pos.x, camera_pos.y, camera_pos.z),
+        vector_math.Vector3(cameraPos.x, cameraPos.y, cameraPos.z),
       );
 
       // Combine rotation and translation into a transformation matrix
       final transformMatrix = translationMatrix * rotationMatrix;
+
+      // Get volume button state based on the sign of _num
+      final volumeButtonState = _volumeNum > 0 ? 'up' : _volumeNum < 0 ? 'down' : '';
 
       // Convert transformMatrix to JSON format
       final transformInfoJson = {
@@ -202,14 +224,18 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
           ],
         ],
         'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'volumeButtonState': volumeButtonState,
       };
-      if (printTransform)
-        debugPrint('Transformation Matrix JSON: $transformInfoJson');
+      if (printTransform) debugPrint('Transformation Matrix JSON: $transformInfoJson');
       // Send the transformation matrix to the server
       if (_isConnected) {
-        _socket.emit('update', jsonEncode(transformInfoJson));
+        _socket?.emit('update', jsonEncode(transformInfoJson));
         if (printTransform) debugPrint('Sent transformation matrix to server');
       }
+
+      //update volume num
+      _volumeNum = (_volumeNum / 1.2).toInt();
+      _valueNotifier.value = "$_volumeNum";
     }
   }
 
@@ -241,13 +267,16 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
               height: 300, // Set the desired height
               child: ARKitSceneView(onARKitViewCreated: onARKitViewCreated),
             ),
-            Text(
-              'Position: $_position',
-              style: const TextStyle(fontSize: 8),
-            ),
+            Text('Position: $_position', style: const TextStyle(fontSize: 8)),
             Text(
               'Rotation (XYZ): $_rotationXYZ',
               style: const TextStyle(fontSize: 8),
+            ),
+            ValueListenableBuilder(
+              valueListenable: _valueNotifier,
+              builder: (BuildContext context, String value, Widget? child) {
+                return Text("Volume: $value", style: const TextStyle(fontSize: 8));
+              },
             ),
           ],
         ),
@@ -258,8 +287,15 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
   void onARKitViewCreated(ARKitController arkitController) {
     this.arkitController = arkitController;
     final node = ARKitNode(
-      geometry: ARKitSphere(radius: 0.1),
-      position: vector_math.Vector3(0, 0, -0.5),
+      geometry: ARKitSphere(radius: 0.05, 
+        materials: [
+          ARKitMaterial(
+            diffuse: ARKitMaterialProperty.color(Colors.red),
+            transparency: 0.9,
+          ),
+        ],
+      ),
+      position: vector_math.Vector3(0, 0, -1),
     );
     this.arkitController.add(node);
   }
