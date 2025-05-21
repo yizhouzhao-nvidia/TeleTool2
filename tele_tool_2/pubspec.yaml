@@ -36,6 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   arkit_plugin: ^1.1.2
   vector_math: ^2.1.4
+  socket_io_client: ^3.1.2
+  volume_watcher: ^2.0.1
 
 dev_dependencies:
   flutter_test:
